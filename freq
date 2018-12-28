@@ -1,0 +1,173 @@
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using VkNet;
+using VkNet.Enums.Filters;
+using VkNet.Model;
+using VkNet.Model.RequestParams;
+
+namespace VkApp
+{
+    class Program
+
+    {
+        static void Main(string[] args)
+        {
+            
+            var api = new VkApi();
+            var taskLogic = new TaskLogic(api);
+            //taskLogic.Authorize();
+            int? numberId;
+            try
+            {
+                while (true)
+                {
+                    Console.WriteLine("Введите Id, либо ScreenName группы");
+                    var enterId = Console.ReadLine();
+                    numberId = taskLogic.IdTreatment(enterId);
+                    if (numberId != null)
+                        break;
+                    
+                }
+            }
+            catch
+            {
+                while (true)
+                {
+                    Console.WriteLine("Вторая и последняя попытка корректного ввода Id, либо ScreenName группы");
+                    var enterId = Console.ReadLine();
+                    numberId = taskLogic.IdTreatment(enterId);
+                    if (numberId != null)
+                        break;
+                    
+                }
+            }
+            finally
+            {
+                Console.ReadKey();
+            }
+            
+            
+            try
+            {
+                
+               
+
+                var posts = taskLogic.GetPost((int?)numberId);
+                var neededPosts = 5;
+
+                foreach (var post in posts.Take(neededPosts))
+                {
+                    string enterInfo = post.Text;
+                    double enterLength = enterInfo.Length;
+                    var result = taskLogic.CalculateFreq(enterInfo, enterLength);
+
+                    var message = JsonConvert.SerializeObject(result, Formatting.Indented);
+
+                    var messageBytes = Encoding.UTF8.GetBytes(message.ToString());
+
+                    var encodingMessage = Encoding.UTF8.GetString(messageBytes);
+
+                    taskLogic.PostWall(encodingMessage);
+
+                    Console.WriteLine(encodingMessage);
+
+                }
+
+            }
+            catch(Exception ex)
+            {
+                Console.WriteLine(ex);
+            }
+
+            
+            
+            Console.ReadLine();
+        }
+    }
+
+    public class TaskLogic
+    {
+        private readonly VkApi api;
+
+        public TaskLogic(VkApi api) => this.api = api;
+
+        public void Authorize()
+        {
+            try
+            {
+                api.Authorize(new ApiAuthParams
+                {
+                    ApplicationId = 6761754,
+                    Login = "логин",     //по-идее, можно запилить ручной авторизационник, дело двух-трех строк, но appID индвидуален.
+                    Password = "парол",
+                    Settings = Settings.All
+                });
+            }
+            catch
+            {
+                Console.WriteLine("Не пройдена авторизация");
+            }
+
+        }
+        public ReadOnlyCollection<Post> GetPost(int? numberId)
+        {
+            var getWall = new WallGetParams()
+            {
+                OwnerId = -(int?)numberId,
+                Filter = VkNet.Enums.SafetyEnums.WallFilter.All,
+                Count = 5
+            };
+            var posts = api.Wall.Get(getWall);
+            return posts.WallPosts;
+        }
+
+        public void PostWall(string encodingMessage)
+        {
+            var toWall = api.Wall.Post(new WallPostParams
+            {
+                OwnerId = -80521728,
+                FromGroup = true,
+                Message = encodingMessage,
+            });
+        }
+        public Dictionary<char, double> CalculateFreq(string enterInfo, double enterInfoLength)
+        {
+            var result = enterInfo
+                        .GroupBy(ch => ch.ToString().ToLowerInvariant()[0])
+                        .Select(group => (letter: group.Key, frequency: group.Count() / enterInfoLength))
+                        .OrderBy(x => x.frequency)
+                        .ToDictionary(tuple => tuple.letter, tuple => tuple.frequency);
+            return result;
+        }
+        public int? IdTreatment(string enterId)
+        {
+            
+            if (int.TryParse(enterId, out int numberId))
+            {
+                Console.WriteLine("Id принят успешно");
+                return (int?)numberId;
+            }
+            else
+            {
+                try
+                {
+                    Console.WriteLine("Обнаружен ScreenName");
+                    numberId = (int)api.Utils.ResolveScreenName(enterId).Id.Value;
+                    return (int?)numberId;
+                }
+                catch (Exception)
+                {
+                    return null;
+                }
+
+            }
+             
+        }
+    }
+}
